@@ -225,6 +225,9 @@ func (l *Latency) headRequest(ctx context.Context, endpoint string, quickestEndp
 	}
 
 	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return
+	}
 	req.WithContext(ctx)
 
 	res, err := l.client.Do(req)
