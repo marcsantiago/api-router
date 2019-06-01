@@ -103,7 +103,7 @@ func (e EndPoints) validate() error {
 type Latency struct {
 	// incase AWS_REGION is present we will default to that region
 	AWSRegion string
-	client    *http.Client
+	Client    *http.Client
 	preset    bool
 
 	mu *sync.RWMutex
@@ -113,11 +113,7 @@ type Latency struct {
 
 // NewLatencyRouter returns a fully initialized network based API router
 // if the inputted client is nil, the default client will be used underneath, which has a 500ms timeout
-func NewLatencyRouter(client *http.Client, endpoints EndPoints) (*Latency, error) {
-	if client == nil {
-		client = defaultClient
-	}
-
+func NewLatencyRouter(endpoints EndPoints, options ...func(*Latency)) (*Latency, error) {
 	if err := endpoints.validate(); err != nil {
 		return nil, err
 	}
@@ -136,13 +132,19 @@ func NewLatencyRouter(client *http.Client, endpoints EndPoints) (*Latency, error
 		}
 	}
 
-	return &Latency{
+	l := &Latency{
 		AWSRegion: region,
+		Client:    defaultClient,
 		mu:        new(sync.RWMutex),
-		client:    client,
 		preset:    len(endpoints.FastestURL) > 0,
 		EndPoints: endpoints,
-	}, nil
+	}
+
+	for _, option := range options {
+		option(l)
+	}
+
+	return l, nil
 }
 
 // GetURL returns the fasters API endpoint from the inputted latency configuration
@@ -170,7 +172,7 @@ func (l *Latency) findLowLatencyEndpoint() {
 	quickestEndpointCh := make(chan string, 1)
 	defer close(quickestEndpointCh)
 
-	ctx, cancel := context.WithTimeout(context.Background(), l.client.Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), l.Client.Timeout)
 
 	if l.preset {
 	loop:
@@ -210,7 +212,7 @@ waiting:
 		case l.FastestURL = <-quickestEndpointCh:
 			quickestEndpointCh = nil
 			break waiting
-		case <-time.After(l.client.Timeout): // incase something happens, this function call shouldn't panic
+		case <-time.After(l.Client.Timeout): // incase something happens, this function call shouldn't panic
 			break waiting
 		}
 	}
@@ -230,7 +232,7 @@ func (l *Latency) headRequest(ctx context.Context, endpoint string, quickestEndp
 	}
 	req.WithContext(ctx)
 
-	res, err := l.client.Do(req)
+	res, err := l.Client.Do(req)
 	if err != nil {
 		return
 	}
@@ -264,7 +266,7 @@ func (l *Latency) headRequestPresetEndpoint(endpoint string) (int, error) {
 		return 0, ErrNoSuchHost
 	}
 
-	res, err := l.client.Head(endpoint)
+	res, err := l.Client.Head(endpoint)
 	if err != nil {
 		return 0, err
 	}

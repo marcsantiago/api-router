@@ -176,6 +176,10 @@ func TestLatency_findLowLatencyEndpoint(t *testing.T) {
 			httpClient, teardown := testingHTTPClient(h)
 			defer teardown()
 
+			client := func(l *Latency) {
+				l.Client = httpClient
+			}
+
 			endpoints := EndPoints{
 				AsiaPacific: "http://foobar.com?region=apac",
 				Europe:      "http://foobar.com?region=eu",
@@ -191,7 +195,7 @@ func TestLatency_findLowLatencyEndpoint(t *testing.T) {
 				}
 			}
 
-			l, _ := NewLatencyRouter(httpClient, endpoints)
+			l, _ := NewLatencyRouter(endpoints, client)
 			l.findLowLatencyEndpoint()
 
 			if !strings.Contains(l.GetURL(), tt.args.currentLocal) {
@@ -257,14 +261,18 @@ func TestLatency_findLowLatencyEndpointWithRegion(t *testing.T) {
 			httpClient, teardown := testingHTTPClient(h)
 			defer teardown()
 
-			l, _ := NewLatencyRouter(httpClient, EndPoints{
+			client := func(l *Latency) {
+				l.Client = httpClient
+			}
+
+			l, _ := NewLatencyRouter(EndPoints{
 				AsiaPacific: "http://foobar.com?region=apac",
 				Europe:      "http://foobar.com?region=eu",
 				Universal:   "http://foobar.com?region=universal",
 				USEast:      "http://foobar.com?region=us-east",
 				USWest:      "http://foobar.com?region=us-west",
 				Fallback:    "http://foobar.com?region=fallback",
-			})
+			}, client)
 			l.findLowLatencyEndpoint()
 
 			// should always be apac because it was set by the region
