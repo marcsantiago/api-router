@@ -102,9 +102,11 @@ func (e EndPoints) validate() error {
 // Latency creates a router based on API latency
 type Latency struct {
 	// incase AWS_REGION is present we will default to that region
-	AWSRegion string
-	Client    *http.Client
-	preset    bool
+	AWSRegion    string
+	Client       *http.Client
+	PingInterval time.Duration
+	preset       bool
+	stopTicker   chan struct{}
 
 	mu *sync.RWMutex
 	EndPoints
@@ -144,6 +146,10 @@ func NewLatencyRouter(endpoints EndPoints, options ...func(*Latency)) (*Latency,
 		option(l)
 	}
 
+	if l.PingInterval.Nanoseconds() > 0.0 {
+		go l.periodicallyPingEndpoints()
+	}
+
 	return l, nil
 }
 
@@ -160,6 +166,12 @@ func (l Latency) GetURL() (u string) {
 		return l.Fallback
 	}
 	return
+}
+
+// StopPingingEndpoints terminates the ticker used to periodically check endpoints for latency and status
+// it's important this function is called to clean up ticker resources
+func (l Latency) StopPingingEndpoints() {
+	l.stopTicker <- struct{}{}
 }
 
 func (l *Latency) findLowLatencyEndpoint() {
@@ -219,6 +231,19 @@ waiting:
 
 	cancel()
 	return
+}
+
+func (l *Latency) periodicallyPingEndpoints() {
+	ticker := time.NewTicker(l.PingInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			l.findLowLatencyEndpoint()
+		case <-l.stopTicker:
+			return
+		}
+	}
 }
 
 func (l *Latency) headRequest(ctx context.Context, endpoint string, quickestEndpoint chan string) {
