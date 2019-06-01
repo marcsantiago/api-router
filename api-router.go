@@ -70,11 +70,11 @@ func (e EndPoints) validate() error {
 		if endpoint := v.Field(i).Interface(); len(endpoint.(string)) > 1 {
 			u, err := url.Parse(endpoint.(string))
 			if err != nil {
-				return errors.Wrap(err, fmt.Sprintf("error with %v: %v", v.Field(i), endpoint))
+				return errors.Wrap(err, fmt.Sprintf("url parsing error on %v: %v", v.Field(i), endpoint))
 			}
 
 			if len(u.Scheme) == 0 {
-				return errors.Wrap(ErrMissingProtocol, fmt.Sprintf("missing protocol, with %v: %v", v.Field(i), endpoint))
+				return errors.Wrap(ErrMissingProtocol, fmt.Sprintf("missing protocol, on %v: %v", v.Field(i), endpoint))
 			}
 			atLeastOne++
 		}
@@ -102,8 +102,10 @@ func (e EndPoints) validate() error {
 // Latency creates a router based on API latency
 type Latency struct {
 	// incase AWS_REGION is present we will default to that region
-	AWSRegion    string
-	Client       *http.Client
+	AWSRegion string
+	// if a client is not passed in as an optional the default network client will be used
+	Client *http.Client
+	// if PingInterval is not set as an optional endpoints will not be checked for latency periodically
 	PingInterval time.Duration
 	preset       bool
 	stopTicker   chan struct{}
@@ -135,11 +137,12 @@ func NewLatencyRouter(endpoints EndPoints, options ...func(*Latency)) (*Latency,
 	}
 
 	l := &Latency{
-		AWSRegion: region,
-		Client:    defaultClient,
-		mu:        new(sync.RWMutex),
-		preset:    len(endpoints.FastestURL) > 0,
-		EndPoints: endpoints,
+		AWSRegion:  region,
+		Client:     defaultClient,
+		EndPoints:  endpoints,
+		mu:         new(sync.RWMutex),
+		stopTicker: make(chan struct{}, 1),
+		preset:     len(endpoints.FastestURL) > 0,
 	}
 
 	for _, option := range options {
@@ -154,7 +157,7 @@ func NewLatencyRouter(endpoints EndPoints, options ...func(*Latency)) (*Latency,
 }
 
 // GetURL returns the fasters API endpoint from the inputted latency configuration
-func (l Latency) GetURL() (u string) {
+func (l *Latency) GetURL() (u string) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -170,8 +173,15 @@ func (l Latency) GetURL() (u string) {
 
 // StopPingingEndpoints terminates the ticker used to periodically check endpoints for latency and status
 // it's important this function is called to clean up ticker resources
-func (l Latency) StopPingingEndpoints() {
-	l.stopTicker <- struct{}{}
+func (l *Latency) StopPingingEndpoints() {
+	if l.PingInterval.Nanoseconds() == 0.0 {
+		return
+	}
+
+	// avoid a deadlock if the user calls this method too many times
+	if len(l.stopTicker) < cap(l.stopTicker) {
+		l.stopTicker <- struct{}{}
+	}
 }
 
 func (l *Latency) findLowLatencyEndpoint() {
@@ -221,7 +231,10 @@ func (l *Latency) findLowLatencyEndpoint() {
 waiting:
 	for {
 		select {
-		case l.FastestURL = <-quickestEndpointCh:
+		case endpoint := <-quickestEndpointCh:
+			l.mu.Lock()
+			l.FastestURL = endpoint
+			l.mu.Unlock()
 			quickestEndpointCh = nil
 			break waiting
 		case <-time.After(l.Client.Timeout): // incase something happens, this function call shouldn't panic
@@ -234,6 +247,9 @@ waiting:
 }
 
 func (l *Latency) periodicallyPingEndpoints() {
+	// do an initial check before ticking
+	l.findLowLatencyEndpoint()
+	// then tick away for potential updates
 	ticker := time.NewTicker(l.PingInterval)
 	defer ticker.Stop()
 	for {
@@ -271,10 +287,12 @@ func (l *Latency) headRequest(ctx context.Context, endpoint string, quickestEndp
 	}
 
 	l.mu.RLock()
-	if l.updated {
+	isUpdated := l.updated
+	l.mu.RUnlock()
+
+	if isUpdated {
 		return
 	}
-	l.mu.RUnlock()
 
 	// update, update before sending back the channel to block subsequent channel sends
 	l.mu.Lock()
