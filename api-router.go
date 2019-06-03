@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -107,6 +108,8 @@ type Latency struct {
 	AWSRegion string
 	// if a client is not passed in as an optional the default network client will be used
 	Client *http.Client
+	// if DebugMode is set logs from the standard log package will be displayed
+	DebugMode bool
 	// if PingInterval is not set as an optional endpoints will not be checked for latency periodically
 	PingInterval time.Duration
 	preset       bool
@@ -209,11 +212,14 @@ func (l *Latency) findLowLatencyEndpoint() {
 			case nil:
 				if (statusCode == http.StatusOK) && err == nil {
 					quickestEndpointCh <- l.FastestURL
+					l.logf("present URL %s is still good\n", l.FastestURL)
 					break loop
 				}
-			case ErrTimeout, ErrConnectionReset, ErrNoSuchHost:
+			case ErrTimeout, ErrConnectionReset:
+				l.logf("present URL %s timed out or had it's connection reset\n", l.FastestURL)
 				// do nothing, let the for loop try again
 			case ErrNoSuchHost:
+				l.logf("present URL %s host could not be found\n", l.FastestURL)
 				break loop
 			}
 		}
@@ -237,9 +243,11 @@ waiting:
 			l.mu.Lock()
 			l.FastestURL = endpoint
 			l.mu.Unlock()
+			l.logf("fastest choosen URL: %s\n", l.FastestURL)
 			quickestEndpointCh = nil
 			break waiting
 		case <-time.After(l.Client.Timeout): // incase something happens, this function call shouldn't panic
+			l.logf("all endpoints took longer than : %v, a fast URL could not be choosen\n", l.Client.Timeout)
 			break waiting
 		}
 	}
@@ -310,6 +318,18 @@ func (l *Latency) headRequestPresetEndpoint(endpoint string) (int, error) {
 	return res.StatusCode, nil
 }
 
+func (l *Latency) log(v ...interface{}) {
+	if l.DebugMode {
+		log.Println(v...)
+	}
+}
+
+func (l *Latency) logf(format string, v ...interface{}) {
+	if l.DebugMode {
+		log.Printf(format, v...)
+	}
+}
+
 func (l *Latency) periodicallyPingEndpoints() {
 	// do an initial check before ticking
 	l.findLowLatencyEndpoint()
@@ -319,6 +339,7 @@ func (l *Latency) periodicallyPingEndpoints() {
 	for {
 		select {
 		case <-ticker.C:
+			l.log("pinging endpoints for latency")
 			l.findLowLatencyEndpoint()
 		case <-l.stopTicker:
 			return
