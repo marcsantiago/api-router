@@ -261,7 +261,7 @@ func (l *Latency) headRequest(ctx context.Context, endpoint string, quickestEndp
 		return
 	}
 
-	req, err := http.NewRequest("GET", endpoint, nil)
+	req, err := http.NewRequest("HEAD", endpoint, nil)
 	if err != nil {
 		return
 	}
