@@ -197,7 +197,6 @@ func (l *Latency) findLowLatencyEndpoint() {
 	// the container is equal to the number of endpoints to hit
 	// we only care about the first one, this is to help with dead locking
 	quickestEndpointCh := make(chan string, 1)
-	defer close(quickestEndpointCh)
 
 	ctx, cancel := context.WithTimeout(context.Background(), l.Client.Timeout)
 
@@ -252,6 +251,7 @@ waiting:
 		}
 	}
 
+	quickestEndpointCh = nil
 	cancel()
 	return
 }
@@ -276,7 +276,7 @@ func (l *Latency) headRequest(ctx context.Context, endpoint string, quickestEndp
 	// trust no one
 	go io.Copy(ioutil.Discard, res.Body)
 
-	if res.StatusCode != http.StatusOK {
+	if !(res.StatusCode >= http.StatusOK && res.StatusCode < http.StatusMultipleChoices) {
 		return
 	}
 
@@ -294,7 +294,11 @@ func (l *Latency) headRequest(ctx context.Context, endpoint string, quickestEndp
 	l.mu.Unlock()
 
 	// send back the fast endpoint
-	quickestEndpoint <- endpoint
+	select {
+	case quickestEndpoint <- endpoint:
+	default:
+	}
+
 	return
 }
 
