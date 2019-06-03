@@ -210,7 +210,7 @@ func (l *Latency) findLowLatencyEndpoint() {
 			err = checkResponseError(err)
 			switch err {
 			case nil:
-				if (statusCode == http.StatusOK) && err == nil {
+				if (statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices) && err == nil {
 					quickestEndpointCh <- l.FastestURL
 					l.logf("present URL %s is still good\n", l.FastestURL)
 					break loop
