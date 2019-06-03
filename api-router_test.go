@@ -13,6 +13,7 @@ import (
 )
 
 func TestEndPoints_validate(t *testing.T) {
+	os.Setenv("AWS_REGION", "")
 	type fields struct {
 		AsiaPacific string
 		Europe      string
@@ -110,7 +111,7 @@ func TestEndPoints_validate(t *testing.T) {
 }
 
 func TestLatency_findLowLatencyEndpoint(t *testing.T) {
-
+	os.Setenv("AWS_REGION", "")
 	type args struct {
 		currentLocal string
 		useFallback  bool
@@ -176,6 +177,10 @@ func TestLatency_findLowLatencyEndpoint(t *testing.T) {
 			httpClient, teardown := testingHTTPClient(h)
 			defer teardown()
 
+			client := func(l *Latency) {
+				l.Client = httpClient
+			}
+
 			endpoints := EndPoints{
 				AsiaPacific: "http://foobar.com?region=apac",
 				Europe:      "http://foobar.com?region=eu",
@@ -191,7 +196,7 @@ func TestLatency_findLowLatencyEndpoint(t *testing.T) {
 				}
 			}
 
-			l, _ := NewLatencyRouter(httpClient, endpoints)
+			l, _ := NewLatencyRouter(endpoints, client)
 			l.findLowLatencyEndpoint()
 
 			if !strings.Contains(l.GetURL(), tt.args.currentLocal) {
@@ -257,19 +262,129 @@ func TestLatency_findLowLatencyEndpointWithRegion(t *testing.T) {
 			httpClient, teardown := testingHTTPClient(h)
 			defer teardown()
 
-			l, _ := NewLatencyRouter(httpClient, EndPoints{
+			client := func(l *Latency) {
+				l.Client = httpClient
+			}
+
+			l, _ := NewLatencyRouter(EndPoints{
 				AsiaPacific: "http://foobar.com?region=apac",
 				Europe:      "http://foobar.com?region=eu",
 				Universal:   "http://foobar.com?region=universal",
 				USEast:      "http://foobar.com?region=us-east",
 				USWest:      "http://foobar.com?region=us-west",
 				Fallback:    "http://foobar.com?region=fallback",
-			})
+			}, client)
 			l.findLowLatencyEndpoint()
 
 			// should always be apac because it was set by the region
 			if !strings.Contains(l.GetURL(), "apac") {
 				t.Fatalf("Latency.findLowLatencyEndpoint() got %s wanted an endpoint containing %s", l.FastestURL, "apac")
+			}
+
+		})
+	}
+}
+
+func TestLatency_periodicallyPingEndpoints(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping")
+	}
+
+	os.Setenv("AWS_REGION", "")
+	type args struct {
+		currentLocal string
+		useFallback  bool
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "should pick us-east because we are located in us-east",
+			args: args{
+				currentLocal: "us-east",
+			},
+		},
+		{
+			name: "should pick us-west because we are located in us-west",
+			args: args{
+				currentLocal: "us-west",
+			},
+		},
+		{
+			name: "should pick apac because we are located in apac",
+			args: args{
+				currentLocal: "apac",
+			},
+		},
+		{
+			name: "should pick eu because we are located in eu",
+			args: args{
+				currentLocal: "eu",
+			},
+		},
+		{
+			name: "should pick eu because we are located in eu",
+			args: args{
+				currentLocal: "eu",
+			},
+		},
+		{
+			name: "should use the fallback",
+			args: args{
+				currentLocal: "fallback",
+				useFallback:  true,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if len(tt.args.currentLocal) == 0 {
+
+				}
+
+				switch {
+				case strings.Contains(r.URL.String(), tt.args.currentLocal) || len(tt.args.currentLocal) == 0:
+					// if this is the region it is from "no latency is added"
+				default:
+					time.Sleep(20 * time.Millisecond)
+				}
+				w.WriteHeader(http.StatusOK)
+			})
+
+			httpClient, teardown := testingHTTPClient(h)
+			defer teardown()
+
+			client := func(l *Latency) {
+				l.Client = httpClient
+			}
+
+			endpoints := EndPoints{
+				AsiaPacific: "http://foobar.com?region=apac",
+				Europe:      "http://foobar.com?region=eu",
+				Universal:   "http://foobar.com?region=universal",
+				USEast:      "http://foobar.com?region=us-east",
+				USWest:      "http://foobar.com?region=us-west",
+				Fallback:    "http://foobar.com?region=fallback",
+			}
+
+			if tt.args.useFallback {
+				endpoints = EndPoints{
+					Fallback: "http://foobar.com?region=fallback",
+				}
+			}
+
+			refresh := func(l *Latency) {
+				l.PingInterval = 500 * time.Millisecond
+			}
+
+			l, _ := NewLatencyRouter(endpoints, client, refresh)
+			defer l.StopPingingEndpoints()
+			time.Sleep(2500 * time.Millisecond)
+
+			if !strings.Contains(l.GetURL(), tt.args.currentLocal) {
+				t.Fatalf("Latency.findLowLatencyEndpoint() got %s wanted an endpoint containing %s", l.FastestURL, tt.args.currentLocal)
 			}
 
 		})
