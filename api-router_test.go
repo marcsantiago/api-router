@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"go.uber.org/goleak"
 )
 
 func TestEndPoints_validate(t *testing.T) {
@@ -286,6 +288,7 @@ func TestLatency_findLowLatencyEndpointWithRegion(t *testing.T) {
 }
 
 func TestLatency_periodicallyPingEndpoints(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	if testing.Short() {
 		t.Skip("skipping")
 	}
