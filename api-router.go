@@ -39,7 +39,7 @@ var (
 	ErrAtLeastOne = errors.New("at least one endpoint has to be passed in")
 	// ErrBadStatus notifies the user that the status code is not a 200
 	ErrBadStatus = errors.New("received a non 200 status code")
-	// ErrFallbackUnset notifties that the fallback should be sent, even if it's a duplicative endpoint
+	// ErrFallbackUnset notifies that the fallback should be sent, even if it's a duplicative endpoint
 	ErrFallbackUnset = errors.New("a fallback endpoint should be sent as a safety mechanism")
 	// ErrMissingProtocol a protocol must be present with each endpoint
 	ErrMissingProtocol = errors.New("missing http or https")
@@ -161,7 +161,7 @@ func NewLatencyRouter(endpoints EndPoints, options ...func(*Latency)) (*Latency,
 	return l, nil
 }
 
-// GetURL returns the fasters API endpoint from the inputted latency configuration
+// GetURL returns the fastest API endpoint from the inputted latency configuration
 func (l *Latency) GetURL() (u string) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -242,11 +242,11 @@ waiting:
 			l.mu.Lock()
 			l.FastestURL = endpoint
 			l.mu.Unlock()
-			l.logf("fastest choosen URL: %s\n", l.FastestURL)
+			l.logf("fastest chosen URL: %s\n", l.FastestURL)
 			quickestEndpointCh = nil
 			break waiting
-		case <-time.After(l.Client.Timeout): // incase something happens, this function call shouldn't panic
-			l.logf("all endpoints took longer than : %v, a fast URL could not be choosen\n", l.Client.Timeout)
+		case <-time.After(l.Client.Timeout): // in-case something happens, this function call shouldn't panic
+			l.logf("all endpoints took longer than : %v, a fast URL could not be chosen\n", l.Client.Timeout)
 			break waiting
 		}
 	}
