@@ -115,9 +115,8 @@ type Latency struct {
 	preset       bool
 	stopTicker   chan struct{}
 
-	mu *sync.RWMutex
+	mu sync.RWMutex
 	EndPoints
-	updated bool
 }
 
 // NewLatencyRouter returns a fully initialized network based API router
@@ -145,7 +144,7 @@ func NewLatencyRouter(endpoints EndPoints, options ...func(*Latency)) (*Latency,
 		AWSRegion:  region,
 		Client:     defaultClient,
 		EndPoints:  endpoints,
-		mu:         new(sync.RWMutex),
+		mu:         sync.RWMutex{},
 		stopTicker: make(chan struct{}, 1),
 		preset:     len(endpoints.FastestURL) > 0,
 	}
@@ -183,23 +182,19 @@ func (l *Latency) StopPingingEndpoints() {
 		return
 	}
 
-	// avoid a deadlock if the user calls this method too many times
-	if len(l.stopTicker) < cap(l.stopTicker) {
-		l.stopTicker <- struct{}{}
+	select {
+	case l.stopTicker <- struct{}{}:
+	default:
 	}
 }
 
 func (l *Latency) findLowLatencyEndpoint() {
-	l.mu.Lock()
-	l.updated = false
-	l.mu.Unlock()
-
 	// the container is equal to the number of endpoints to hit
 	// we only care about the first one, this is to help with dead locking
 	quickestEndpointCh := make(chan string, 1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), l.Client.Timeout)
-
+	defer cancel()
 	if l.preset {
 	loop:
 		// if the preset URL fails
@@ -250,9 +245,7 @@ waiting:
 			break waiting
 		}
 	}
-
 	quickestEndpointCh = nil
-	cancel()
 	return
 }
 
@@ -261,11 +254,10 @@ func (l *Latency) headRequest(ctx context.Context, endpoint string, quickestEndp
 		return
 	}
 
-	req, err := http.NewRequest("HEAD", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, endpoint, nil)
 	if err != nil {
 		return
 	}
-	req.WithContext(ctx)
 
 	res, err := l.Client.Do(req)
 	if err != nil {
@@ -279,19 +271,6 @@ func (l *Latency) headRequest(ctx context.Context, endpoint string, quickestEndp
 	if !(res.StatusCode >= http.StatusOK && res.StatusCode < http.StatusMultipleChoices) {
 		return
 	}
-
-	l.mu.RLock()
-	isUpdated := l.updated
-	l.mu.RUnlock()
-
-	if isUpdated {
-		return
-	}
-
-	// update, update before sending back the channel to block subsequent channel sends
-	l.mu.Lock()
-	l.updated = true
-	l.mu.Unlock()
 
 	// send back the fast endpoint
 	select {
@@ -315,6 +294,7 @@ func (l *Latency) headRequestPresetEndpoint(endpoint string) (int, error) {
 
 	// trust no one
 	go io.Copy(ioutil.Discard, res.Body)
+
 	if res.StatusCode != http.StatusOK {
 		return res.StatusCode, ErrBadStatus
 	}
@@ -339,13 +319,13 @@ func (l *Latency) periodicallyPingEndpoints() {
 	l.findLowLatencyEndpoint()
 	// then tick away for potential updates
 	ticker := time.NewTicker(l.PingInterval)
-	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			l.log("pinging endpoints for latency")
 			l.findLowLatencyEndpoint()
 		case <-l.stopTicker:
+			ticker.Stop()
 			return
 		}
 	}
