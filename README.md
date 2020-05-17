@@ -1,4 +1,5 @@
 # api-router
+![Go](https://github.com/marcsantiago/api-router/workflows/Go/badge.svg)
 
 The pupose of this package is to pick the best API endpoint for reduced latency.
 
