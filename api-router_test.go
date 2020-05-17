@@ -383,7 +383,7 @@ func TestLatency_periodicallyPingEndpoints(t *testing.T) {
 			}
 
 			l, _ := NewLatencyRouter(endpoints, client, refresh)
-			defer l.StopPingingEndpoints()
+			l.StopPingingEndpoints()
 			time.Sleep(2500 * time.Millisecond)
 
 			if !strings.Contains(l.GetURL(), tt.args.currentLocal) {
@@ -392,6 +392,39 @@ func TestLatency_periodicallyPingEndpoints(t *testing.T) {
 
 		})
 	}
+}
+
+func TestResourcesAreReleased(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	httpClient, teardown := testingHTTPClient(h)
+	defer teardown()
+
+	client := func(l *Latency) {
+		l.Client = httpClient
+	}
+
+	endpoints := EndPoints{
+		AsiaPacific: "http://foobar.com?region=apac",
+		Europe:      "http://foobar.com?region=eu",
+		Universal:   "http://foobar.com?region=universal",
+		USEast:      "http://foobar.com?region=us-east",
+		USWest:      "http://foobar.com?region=us-west",
+		Fallback:    "http://foobar.com?region=fallback",
+	}
+
+	refresh := func(l *Latency) {
+		l.PingInterval = 500 * time.Millisecond
+	}
+
+	for i := 0; i < 10; i++ {
+		l, _ := NewLatencyRouter(endpoints, client, refresh)
+		l.StopPingingEndpoints()
+	}
+	time.Sleep(1000 * time.Millisecond)
 }
 
 func testingHTTPClient(handler http.Handler) (*http.Client, func()) {
