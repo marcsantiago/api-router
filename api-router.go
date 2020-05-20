@@ -113,6 +113,7 @@ type Latency struct {
 	// if PingInterval is not set as an optional endpoints will not be checked for latency periodically
 	PingInterval time.Duration
 	preset       bool
+	shouldGuard  bool
 	stopTicker   chan struct{}
 
 	mu sync.RWMutex
@@ -154,6 +155,7 @@ func NewLatencyRouter(endpoints EndPoints, options ...func(*Latency)) (*Latency,
 	}
 
 	if l.PingInterval.Nanoseconds() > 0.0 {
+		l.shouldGuard = true
 		go l.periodicallyPingEndpoints()
 	}
 
@@ -162,8 +164,11 @@ func NewLatencyRouter(endpoints EndPoints, options ...func(*Latency)) (*Latency,
 
 // GetURL returns the fastest API endpoint from the inputted latency configuration
 func (l *Latency) GetURL() (u string) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+	// we only need to guard if and only if the data is being periodically refreshed
+	if l.shouldGuard {
+		l.mu.RLock()
+		defer l.mu.RUnlock()
+	}
 
 	if len(l.FastestURL) != 0 {
 		return l.FastestURL
