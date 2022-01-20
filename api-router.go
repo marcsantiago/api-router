@@ -174,6 +174,10 @@ func (l *Latency) GetURL() (u string) {
 		return l.FastestURL
 	}
 
+	if len(l.Universal) != 0 {
+		return l.Universal
+	}
+
 	if len(l.Fallback) != 0 {
 		return l.Fallback
 	}
