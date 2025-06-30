@@ -75,104 +75,26 @@ func TestLatency_findLowLatencyEndpoint(t *testing.T) {
 			defer teardown()
 
 			endpoints := EndPoints{
-				AsiaPacific: "http://foobar.com?region=apac",
-				Europe:      "http://foobar.com?region=eu",
-				Universal:   "http://foobar.com?region=universal",
-				USEast:      "http://foobar.com?region=us-east",
-				USWest:      "http://foobar.com?region=us-west",
-				Fallback:    "http://foobar.com?region=fallback",
+				AsiaPacific: "https://foobar.com?region=apac",
+				Europe:      "https://foobar.com?region=eu",
+				Universal:   "https://foobar.com?region=universal",
+				USEast:      "https://foobar.com?region=us-east",
+				USWest:      "https://foobar.com?region=us-west",
+				Fallback:    "https://foobar.com?region=fallback",
 			}
 
-			l := NewLatencyChecker(&endpoints,
+			l := NewLatencyCheckerModifier(&endpoints,
 				WithCustomClient(httpClient),
 			)
 			l.findLowLatencyEndpoint()
 			httpClient.CloseIdleConnections()
 
-			if !strings.Contains(l.GetFastestEndpoint(), tt.args.currentLocal) {
-				t.Fatalf("Router.findLowLatencyEndpoint() got %s wanted an endpoint containing %s", l.GetFastestEndpoint(), tt.args.currentLocal)
+			if !strings.Contains(l.GetEndpoint(), tt.args.currentLocal) {
+				t.Fatalf("Router.findLowLatencyEndpoint() got %s wanted an endpoint containing %s", l.GetEndpoint(), tt.args.currentLocal)
 			}
 		})
 	}
 }
-
-//This test needs to be part of the router if and only if latency routing is enabled
-//func TestLatency_findLowLatencyEndpointWithRegion(t *testing.T) {
-//	t.Parallel()
-//	_ = os.Setenv("AWS_REGION", "ap-south-1")
-//	type args struct {
-//		currentLocal string
-//	}
-//	tests := []struct {
-//		name string
-//		args args
-//	}{
-//		{
-//			name: "should pick ap-south-1 because AWS_REGION region is set to ap-south-1, local is set to us-east",
-//			args: args{
-//				currentLocal: "us-east",
-//			},
-//		},
-//		{
-//			name: "should pick ap-south-1 because AWS_REGION region is set to ap-south-1, local is set to us-west",
-//			args: args{
-//				currentLocal: "us-west",
-//			},
-//		},
-//		{
-//			name: "should pick ap-south-1 because AWS_REGION region is set to ap-south-1, local is set to apac",
-//			args: args{
-//				currentLocal: "apac",
-//			},
-//		},
-//		{
-//			name: "should pick ap-south-1 because AWS_REGION region is set to ap-south-1, local is set to eu",
-//			args: args{
-//				currentLocal: "eu",
-//			},
-//		},
-//	}
-//	for _, tt := range tests {
-//		t.Run(tt.name, func(t *testing.T) {
-//			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-//				switch {
-//				case strings.Contains(r.URL.String(), tt.args.currentLocal):
-//					// if this is the region, it is from "no latency is added."
-//				case strings.Contains(r.URL.String(), "west"):
-//					time.Sleep(20 * time.Millisecond)
-//				case strings.Contains(r.URL.String(), "universal"):
-//					time.Sleep(30 * time.Millisecond)
-//				case strings.Contains(r.URL.String(), "fallback"):
-//					time.Sleep(40 * time.Millisecond)
-//				case strings.Contains(r.URL.String(), "eu"):
-//					time.Sleep(50 * time.Millisecond)
-//				}
-//				w.WriteHeader(http.StatusOK)
-//			})
-//
-//			httpClient, teardown := testingHTTPClient(h)
-//			defer teardown()
-//
-//			l := NewLatencyChecker(&EndPoints{
-//				AsiaPacific: "http://foobar.com?region=apac",
-//				Europe:      "http://foobar.com?region=eu",
-//				Universal:   "http://foobar.com?region=universal",
-//				USEast:      "http://foobar.com?region=us-east",
-//				USWest:      "http://foobar.com?region=us-west",
-//				Fallback:    "http://foobar.com?region=fallback",
-//			},
-//				WithCustomClient(httpClient),
-//			)
-//			l.findLowLatencyEndpoint()
-//
-//			// should always be apac because it was set by the region
-//			if !strings.Contains(l.GetFastestEndpoint(), "apac") {
-//				t.Fatalf("Router.findLowLatencyEndpoint() got %s wanted an endpoint containing %s", l.GetFastestEndpoint(), "apac")
-//			}
-//
-//		})
-//	}
-//}
 
 func TestLatency_periodicallyPingEndpoints(t *testing.T) {
 	defer goleak.VerifyNone(t,
@@ -258,15 +180,15 @@ func TestLatency_periodicallyPingEndpoints(t *testing.T) {
 			defer teardown()
 
 			endpoints := EndPoints{
-				AsiaPacific: "http://foobar.com?region=apac",
-				Europe:      "http://foobar.com?region=eu",
-				Universal:   "http://foobar.com?region=universal",
-				USEast:      "http://foobar.com?region=us-east",
-				USWest:      "http://foobar.com?region=us-west",
-				Fallback:    "http://foobar.com?region=fallback",
+				AsiaPacific: "https://foobar.com?region=apac",
+				Europe:      "https://foobar.com?region=eu",
+				Universal:   "https://foobar.com?region=universal",
+				USEast:      "https://foobar.com?region=us-east",
+				USWest:      "https://foobar.com?region=us-west",
+				Fallback:    "https://foobar.com?region=fallback",
 			}
 
-			l := NewLatencyChecker(&endpoints,
+			l := NewLatencyCheckerModifier(&endpoints,
 				WithCustomClient(httpClient),
 				WithCustomPingInterval(500*time.Millisecond),
 			)
@@ -274,8 +196,8 @@ func TestLatency_periodicallyPingEndpoints(t *testing.T) {
 			httpClient.CloseIdleConnections()
 
 			time.Sleep(2500 * time.Millisecond)
-			if !strings.Contains(l.GetFastestEndpoint(), tt.want) {
-				t.Fatalf("Router.findLowLatencyEndpoint() got %s wanted an endpoint containing %s", l.GetFastestEndpoint(), tt.want)
+			if !strings.Contains(l.GetEndpoint(), tt.want) {
+				t.Fatalf("Router.findLowLatencyEndpoint() got %s wanted an endpoint containing %s", l.GetEndpoint(), tt.want)
 			}
 		})
 	}
@@ -294,16 +216,16 @@ func TestResourcesAreReleased(t *testing.T) {
 	defer teardown()
 
 	endpoints := EndPoints{
-		AsiaPacific: "http://foobar.com?region=apac",
-		Europe:      "http://foobar.com?region=eu",
-		Universal:   "http://foobar.com?region=universal",
-		USEast:      "http://foobar.com?region=us-east",
-		USWest:      "http://foobar.com?region=us-west",
-		Fallback:    "http://foobar.com?region=fallback",
+		AsiaPacific: "https://foobar.com?region=apac",
+		Europe:      "https://foobar.com?region=eu",
+		Universal:   "https://foobar.com?region=universal",
+		USEast:      "https://foobar.com?region=us-east",
+		USWest:      "https://foobar.com?region=us-west",
+		Fallback:    "https://foobar.com?region=fallback",
 	}
 
 	for i := 0; i < 10; i++ {
-		l := NewLatencyChecker(&endpoints,
+		l := NewLatencyCheckerModifier(&endpoints,
 			WithCustomClient(httpClient),
 			WithCustomPingInterval(500*time.Millisecond),
 		)

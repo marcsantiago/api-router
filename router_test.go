@@ -162,9 +162,87 @@ func TestRouter_GetURL(t *testing.T) {
 			t.Setenv("AWS_REGION", tt.fields.AWSRegion)
 			r, _ := NewEnvironmentRouter(tt.fields.EndPoints)
 
-			if gotU := r.GetURL(); gotU != tt.wantU {
-				t.Fatalf("GetURL() = %v, want %v", gotU, tt.wantU)
+			if gotU := r.GetRouterURL(); gotU != tt.wantU {
+				t.Fatalf("GetRouterURL() = %v, want %v", gotU, tt.wantU)
 			}
 		})
 	}
 }
+
+//This test needs to be part of the router if and only if latency routing is enabled
+//func TestLatency_findLowLatencyEndpointWithRegion(t *testing.T) {
+//	t.Parallel()
+//	_ = os.Setenv("AWS_REGION", "ap-south-1")
+//	type args struct {
+//		currentLocal string
+//	}
+//	tests := []struct {
+//		name string
+//		args args
+//	}{
+//		{
+//			name: "should pick ap-south-1 because AWS_REGION region is set to ap-south-1, local is set to us-east",
+//			args: args{
+//				currentLocal: "us-east",
+//			},
+//		},
+//		{
+//			name: "should pick ap-south-1 because AWS_REGION region is set to ap-south-1, local is set to us-west",
+//			args: args{
+//				currentLocal: "us-west",
+//			},
+//		},
+//		{
+//			name: "should pick ap-south-1 because AWS_REGION region is set to ap-south-1, local is set to apac",
+//			args: args{
+//				currentLocal: "apac",
+//			},
+//		},
+//		{
+//			name: "should pick ap-south-1 because AWS_REGION region is set to ap-south-1, local is set to eu",
+//			args: args{
+//				currentLocal: "eu",
+//			},
+//		},
+//	}
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+//				switch {
+//				case strings.Contains(r.URL.String(), tt.args.currentLocal):
+//					// if this is the region, it is from "no latency is added."
+//				case strings.Contains(r.URL.String(), "west"):
+//					time.Sleep(20 * time.Millisecond)
+//				case strings.Contains(r.URL.String(), "universal"):
+//					time.Sleep(30 * time.Millisecond)
+//				case strings.Contains(r.URL.String(), "fallback"):
+//					time.Sleep(40 * time.Millisecond)
+//				case strings.Contains(r.URL.String(), "eu"):
+//					time.Sleep(50 * time.Millisecond)
+//				}
+//				w.WriteHeader(http.StatusOK)
+//			})
+//
+//			httpClient, teardown := testingHTTPClient(h)
+//			defer teardown()
+//
+//			l := NewLatencyCheckerModifier(&EndPoints{
+//				AsiaPacific: "http://foobar.com?region=apac",
+//				Europe:      "http://foobar.com?region=eu",
+//				Universal:   "http://foobar.com?region=universal",
+//				USEast:      "http://foobar.com?region=us-east",
+//				USWest:      "http://foobar.com?region=us-west",
+//				Fallback:    "http://foobar.com?region=fallback",
+//			},
+//				WithCustomClient(httpClient),
+//			)
+//			l.findLowLatencyEndpoint()
+//
+//			// should always be apac because it was set by the region
+//			if !strings.Contains(l.GetEndpoint(), "apac") {
+//				t.Fatalf("Router.findLowLatencyEndpoint() got %s wanted an endpoint containing %s", l.GetEndpoint(), "apac")
+//			}
+//
+//		})
+//	}
+//}

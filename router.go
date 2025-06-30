@@ -61,6 +61,8 @@ type Router struct {
 	// in case AWS_REGION is present, we will default to that region
 	AWSRegion string
 	EndPoints
+
+	routerModifier IRouterModifier
 }
 
 // NewEnvironmentRouter returns a fully initialized network based API router
@@ -96,8 +98,8 @@ func NewEnvironmentRouter(endpoints EndPoints, options ...func(*Router)) (*Route
 	return r, nil
 }
 
-// GetURL returns the fastest API endpoint from the inputted latency configuration
-func (r *Router) GetURL() (u string) {
+// GetRouterURL returns the fastest API endpoint from the inputted latency configuration
+func (r *Router) GetRouterURL() (u string) {
 	if len(r.ClosestURL) != 0 {
 		return r.ClosestURL
 	}
@@ -112,8 +114,23 @@ func (r *Router) GetURL() (u string) {
 	return
 }
 
-func WithLatencyChecksTestWinURL(url string) func(*Router) {
+// GetModifierURL uses url from the supplied modifier and falls back to GetRouterURL is the returned endpoint is empty
+func (r *Router) GetModifierURL() (u string) {
+	if r.routerModifier != nil {
+		endpoint := r.routerModifier.GetEndpoint()
+		if endpoint != "" {
+			return r.GetRouterURL()
+		}
+	}
+	return r.GetRouterURL()
+}
+
+// WithRouterModifier assigns a modifier to change the internal logic of the router
+// only 1 modifier may be used per instance of a router
+func WithRouterModifier(routerModifier IRouterModifier) func(*Router) {
 	return func(r *Router) {
-		// TODO
+		if r.routerModifier != nil {
+			r.routerModifier = routerModifier
+		}
 	}
 }

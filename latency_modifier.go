@@ -28,7 +28,7 @@ var (
 	defaultPingInterval = 1 * time.Hour
 )
 
-type Latency struct {
+type LatencyCheckModifier struct {
 	// if a client is not passed in as an optional, the default network client will be used
 	Client *http.Client
 	// EndPoints is passed through as a reference from Router
@@ -43,8 +43,8 @@ type Latency struct {
 	stopTicker chan struct{}
 }
 
-func NewLatencyChecker(endpoints *EndPoints, options ...func(*Latency)) *Latency {
-	l := &Latency{
+func NewLatencyCheckerModifier(endpoints *EndPoints, options ...func(*LatencyCheckModifier)) *LatencyCheckModifier {
+	l := &LatencyCheckModifier{
 		Client:       defaultClient,
 		PingInterval: defaultPingInterval,
 		DebugMode:    false,
@@ -64,27 +64,27 @@ func NewLatencyChecker(endpoints *EndPoints, options ...func(*Latency)) *Latency
 
 // StopPingingEndpoints terminates the ticker used to periodically check endpoints for latency and status
 // it's important this function is called to clean up ticker resources
-func (l *Latency) StopPingingEndpoints() {
+func (l *LatencyCheckModifier) StopPingingEndpoints() {
 	select {
 	case l.stopTicker <- struct{}{}:
 	default:
 	}
 }
 
-func WithCustomClient(client *http.Client) func(*Latency) {
-	return func(l *Latency) {
+func WithCustomClient(client *http.Client) func(*LatencyCheckModifier) {
+	return func(l *LatencyCheckModifier) {
 		l.Client = client
 	}
 }
 
-func WithCustomPingInterval(interval time.Duration) func(*Latency) {
-	return func(l *Latency) {
+func WithCustomPingInterval(interval time.Duration) func(*LatencyCheckModifier) {
+	return func(l *LatencyCheckModifier) {
 		l.PingInterval = interval
 	}
 }
 
-func WithDebugMode(debug bool) func(*Latency) {
-	return func(l *Latency) {
+func WithDebugMode(debug bool) func(*LatencyCheckModifier) {
+	return func(l *LatencyCheckModifier) {
 		l.DebugMode = debug
 	}
 }
@@ -94,7 +94,7 @@ type latencyResult struct {
 	Duration time.Duration
 }
 
-func (l *Latency) findLowLatencyEndpoint() {
+func (l *LatencyCheckModifier) findLowLatencyEndpoint() {
 	ctx, cancel := context.WithTimeout(context.Background(), l.Client.Timeout)
 	defer cancel()
 
@@ -131,14 +131,17 @@ func (l *Latency) findLowLatencyEndpoint() {
 	return
 }
 
-func (l *Latency) GetFastestEndpoint() (endpoint string) {
+// GetEndpoint returns the fastestURL
+//
+// defaults to the closestURL from the default router and changes based on latency checks
+func (l *LatencyCheckModifier) GetEndpoint() (endpoint string) {
 	l.mu.RLock()
 	endpoint = l.fastestURL
 	l.mu.RUnlock()
 	return
 }
 
-func (l *Latency) headRequest(ctx context.Context, wg *sync.WaitGroup, endpoint string, results chan latencyResult) {
+func (l *LatencyCheckModifier) headRequest(ctx context.Context, wg *sync.WaitGroup, endpoint string, results chan latencyResult) {
 	defer wg.Done()
 
 	if len(endpoint) == 0 {
@@ -172,19 +175,19 @@ func (l *Latency) headRequest(ctx context.Context, wg *sync.WaitGroup, endpoint 
 	return
 }
 
-func (l *Latency) log(v ...interface{}) {
+func (l *LatencyCheckModifier) log(v ...interface{}) {
 	if l.DebugMode {
 		log.Println(v...)
 	}
 }
 
-func (l *Latency) logf(format string, v ...interface{}) {
+func (l *LatencyCheckModifier) logf(format string, v ...interface{}) {
 	if l.DebugMode {
 		log.Printf(format, v...)
 	}
 }
 
-func (l *Latency) periodicallyPingEndpoints() {
+func (l *LatencyCheckModifier) periodicallyPingEndpoints() {
 	l.findLowLatencyEndpoint()
 	ticker := time.NewTicker(l.PingInterval)
 	go func() {
