@@ -1,8 +1,11 @@
 package router
 
 import (
+	"net/http"
 	"os"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestEndPoints_validate(t *testing.T) {
@@ -169,80 +172,108 @@ func TestRouter_GetURL(t *testing.T) {
 	}
 }
 
-//This test needs to be part of the router if and only if latency routing is enabled
-//func TestLatency_findLowLatencyEndpointWithRegion(t *testing.T) {
-//	t.Parallel()
-//	_ = os.Setenv("AWS_REGION", "ap-south-1")
-//	type args struct {
-//		currentLocal string
-//	}
-//	tests := []struct {
-//		name string
-//		args args
-//	}{
-//		{
-//			name: "should pick ap-south-1 because AWS_REGION region is set to ap-south-1, local is set to us-east",
-//			args: args{
-//				currentLocal: "us-east",
-//			},
-//		},
-//		{
-//			name: "should pick ap-south-1 because AWS_REGION region is set to ap-south-1, local is set to us-west",
-//			args: args{
-//				currentLocal: "us-west",
-//			},
-//		},
-//		{
-//			name: "should pick ap-south-1 because AWS_REGION region is set to ap-south-1, local is set to apac",
-//			args: args{
-//				currentLocal: "apac",
-//			},
-//		},
-//		{
-//			name: "should pick ap-south-1 because AWS_REGION region is set to ap-south-1, local is set to eu",
-//			args: args{
-//				currentLocal: "eu",
-//			},
-//		},
-//	}
-//	for _, tt := range tests {
-//		t.Run(tt.name, func(t *testing.T) {
-//			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-//				switch {
-//				case strings.Contains(r.URL.String(), tt.args.currentLocal):
-//					// if this is the region, it is from "no latency is added."
-//				case strings.Contains(r.URL.String(), "west"):
-//					time.Sleep(20 * time.Millisecond)
-//				case strings.Contains(r.URL.String(), "universal"):
-//					time.Sleep(30 * time.Millisecond)
-//				case strings.Contains(r.URL.String(), "fallback"):
-//					time.Sleep(40 * time.Millisecond)
-//				case strings.Contains(r.URL.String(), "eu"):
-//					time.Sleep(50 * time.Millisecond)
-//				}
-//				w.WriteHeader(http.StatusOK)
-//			})
-//
-//			httpClient, teardown := testingHTTPClient(h)
-//			defer teardown()
-//
-//			l := NewLatencyCheckerModifier(&EndPoints{
-//				AsiaPacific: "http://foobar.com?region=apac",
-//				Europe:      "http://foobar.com?region=eu",
-//				Universal:   "http://foobar.com?region=universal",
-//				USEast:      "http://foobar.com?region=us-east",
-//				USWest:      "http://foobar.com?region=us-west",
-//				Fallback:    "http://foobar.com?region=fallback",
-//			},
-//				WithCustomClient(httpClient),
-//			)
-//			l.findLowLatencyEndpoint()
-//
-//			// should always be apac because it was set by the region
-//			if !strings.Contains(l.GetEndpoint(), "apac") {
-//				t.Fatalf("Router.findLowLatencyEndpoint() got %s wanted an endpoint containing %s", l.GetEndpoint(), "apac")
-//			}
-//
-//		})
-//	}
-//}
+func TestRouter_Latency_GetModifierURL(t *testing.T) {
+	type fields struct {
+		AWSRegion string
+		EndPoints EndPoints
+	}
+	tests := []struct {
+		name          string
+		fields        fields
+		latencyChecks bool
+		currentLocal  string
+		wantU         string
+	}{
+		{
+			name: "the closest endpoint should be us-east, no latency checks",
+			fields: fields{
+				EndPoints: EndPoints{
+					AsiaPacific: "http://foobar.com?region=apac",
+					Europe:      "http://foobar.com?region=eu",
+					Universal:   "http://foobar.com?region=universal",
+					USEast:      "http://foobar.com?region=us-east",
+					USWest:      "http://foobar.com?region=us-west",
+					Fallback:    "http://foobar.com?region=fallback",
+				},
+				AWSRegion: "us-east-1",
+			},
+			wantU:        "http://foobar.com?region=us-east",
+			currentLocal: "us-east",
+		},
+		{
+			name: "select the universal endpoint, even though we are in us-east, the endpoint is missing, no latency checks",
+			fields: fields{
+				EndPoints: EndPoints{
+					AsiaPacific: "http://foobar.com?region=apac",
+					Europe:      "http://foobar.com?region=eu",
+					Universal:   "http://foobar.com?region=universal",
+					USWest:      "http://foobar.com?region=us-west",
+					Fallback:    "http://foobar.com?region=fallback",
+				},
+				AWSRegion: "us-east-1",
+			},
+			wantU:        "http://foobar.com?region=universal",
+			currentLocal: "universal",
+		},
+		{
+			name: "select the eu endpoint, even though we are in us-east, us-east and universal are missing",
+			fields: fields{
+				EndPoints: EndPoints{
+					AsiaPacific: "http://foobar.com?region=apac",
+					Europe:      "http://foobar.com?region=eu",
+					USWest:      "http://foobar.com?region=us-west",
+					Fallback:    "http://foobar.com?region=fallback",
+				},
+				AWSRegion: "us-east-1",
+			},
+			wantU:        "http://foobar.com?region=eu",
+			currentLocal: "eu",
+		},
+		{
+			name: "there is only one endpoint fallback",
+			fields: fields{
+				EndPoints: EndPoints{
+					Fallback: "http://foobar.com?region=fallback",
+				},
+				AWSRegion: "us-east-1",
+			},
+			wantU:        "http://foobar.com?region=fallback",
+			currentLocal: "eu",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("AWS_REGION", tt.fields.AWSRegion)
+			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.Contains(r.URL.String(), tt.currentLocal) || len(tt.currentLocal) == 0:
+					// if this is the region, it is from "no latency is added."
+				default:
+					switch {
+					case strings.Contains(r.URL.String(), "eu") && strings.Contains(r.URL.String(), tt.currentLocal):
+						return
+					default:
+						time.Sleep(20 * time.Millisecond)
+					}
+				}
+
+				w.WriteHeader(http.StatusOK)
+			})
+			httpClient, teardown := testingHTTPClient(h)
+			defer func() {
+				teardown()
+				httpClient.CloseIdleConnections()
+			}()
+
+			r, _ := NewEnvironmentRouter(tt.fields.EndPoints)
+			latencyModifier := NewLatencyCheckerModifier(&r.EndPoints,
+				WithCustomClient(httpClient),
+			)
+			r.AddRouterModifier(latencyModifier)
+			time.Sleep(100 * time.Millisecond)
+			if gotU := r.GetModifierURL(); gotU != tt.wantU {
+				t.Fatalf("GetModifierURL() = %v, want %v", gotU, tt.wantU)
+			}
+		})
+	}
+}

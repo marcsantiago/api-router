@@ -53,13 +53,30 @@ func NewLatencyCheckerModifier(endpoints *EndPoints, options ...func(*LatencyChe
 		stopTicker:   make(chan struct{}, 1),
 	}
 
-	l.fastestURL = endpoints.ClosestURL
+	if len(endpoints.ClosestURL) != 0 {
+		l.fastestURL = endpoints.ClosestURL
+	} else if len(endpoints.Universal) != 0 {
+		l.fastestURL = endpoints.Universal
+	} else if len(endpoints.Fallback) != 0 {
+		l.fastestURL = endpoints.Fallback
+	}
+
 	for _, option := range options {
 		option(l)
 	}
 	// starts a long-lived goroutine
 	l.periodicallyPingEndpoints()
 	return l
+}
+
+// GetEndpoint returns the fastestURL
+//
+// defaults to the closestURL from the default router and changes based on latency checks
+func (l *LatencyCheckModifier) GetEndpoint() (endpoint string) {
+	l.mu.RLock()
+	endpoint = l.fastestURL
+	l.mu.RUnlock()
+	return
 }
 
 // StopPingingEndpoints terminates the ticker used to periodically check endpoints for latency and status
@@ -128,16 +145,6 @@ func (l *LatencyCheckModifier) findLowLatencyEndpoint() {
 		return
 	}
 	l.fastestURL = fastest.URL
-	return
-}
-
-// GetEndpoint returns the fastestURL
-//
-// defaults to the closestURL from the default router and changes based on latency checks
-func (l *LatencyCheckModifier) GetEndpoint() (endpoint string) {
-	l.mu.RLock()
-	endpoint = l.fastestURL
-	l.mu.RUnlock()
 	return
 }
 

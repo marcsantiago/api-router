@@ -67,7 +67,7 @@ type Router struct {
 
 // NewEnvironmentRouter returns a fully initialized network based API router
 // if the inputted client is nil, the default client will be used underneath, which has a 500 ms timeout
-func NewEnvironmentRouter(endpoints EndPoints, options ...func(*Router)) (*Router, error) {
+func NewEnvironmentRouter(endpoints EndPoints) (*Router, error) {
 	if err := endpoints.validate(); err != nil {
 		return nil, err
 	}
@@ -89,10 +89,6 @@ func NewEnvironmentRouter(endpoints EndPoints, options ...func(*Router)) (*Route
 	r := &Router{
 		AWSRegion: region,
 		EndPoints: endpoints,
-	}
-
-	for _, option := range options {
-		option(r)
 	}
 
 	return r, nil
@@ -118,19 +114,18 @@ func (r *Router) GetRouterURL() (u string) {
 func (r *Router) GetModifierURL() (u string) {
 	if r.routerModifier != nil {
 		endpoint := r.routerModifier.GetEndpoint()
-		if endpoint != "" {
+		if len(endpoint) == 0 {
 			return r.GetRouterURL()
 		}
+		return endpoint
 	}
 	return r.GetRouterURL()
 }
 
-// WithRouterModifier assigns a modifier to change the internal logic of the router
+// AddRouterModifier assigns a modifier to change the internal logic of the router
 // only 1 modifier may be used per instance of a router
-func WithRouterModifier(routerModifier IRouterModifier) func(*Router) {
-	return func(r *Router) {
-		if r.routerModifier != nil {
-			r.routerModifier = routerModifier
-		}
+func (r *Router) AddRouterModifier(routerModifier IRouterModifier) {
+	if r.routerModifier == nil {
+		r.routerModifier = routerModifier
 	}
 }

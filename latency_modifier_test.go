@@ -1,11 +1,7 @@
 package router
 
 import (
-	"context"
-	"crypto/tls"
-	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -58,10 +54,6 @@ func TestLatency_findLowLatencyEndpoint(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if len(tt.args.currentLocal) == 0 {
-
-				}
-
 				switch {
 				case strings.Contains(r.URL.String(), tt.args.currentLocal) || len(tt.args.currentLocal) == 0:
 					// if this is the region, it is from "no latency is added."
@@ -75,12 +67,12 @@ func TestLatency_findLowLatencyEndpoint(t *testing.T) {
 			defer teardown()
 
 			endpoints := EndPoints{
-				AsiaPacific: "https://foobar.com?region=apac",
-				Europe:      "https://foobar.com?region=eu",
-				Universal:   "https://foobar.com?region=universal",
-				USEast:      "https://foobar.com?region=us-east",
-				USWest:      "https://foobar.com?region=us-west",
-				Fallback:    "https://foobar.com?region=fallback",
+				AsiaPacific: "http://foobar.com?region=apac",
+				Europe:      "http://foobar.com?region=eu",
+				Universal:   "http://foobar.com?region=universal",
+				USEast:      "http://foobar.com?region=us-east",
+				USWest:      "http://foobar.com?region=us-west",
+				Fallback:    "http://foobar.com?region=fallback",
 			}
 
 			l := NewLatencyCheckerModifier(&endpoints,
@@ -180,12 +172,12 @@ func TestLatency_periodicallyPingEndpoints(t *testing.T) {
 			defer teardown()
 
 			endpoints := EndPoints{
-				AsiaPacific: "https://foobar.com?region=apac",
-				Europe:      "https://foobar.com?region=eu",
-				Universal:   "https://foobar.com?region=universal",
-				USEast:      "https://foobar.com?region=us-east",
-				USWest:      "https://foobar.com?region=us-west",
-				Fallback:    "https://foobar.com?region=fallback",
+				AsiaPacific: "http://foobar.com?region=apac",
+				Europe:      "http://foobar.com?region=eu",
+				Universal:   "http://foobar.com?region=universal",
+				USEast:      "http://foobar.com?region=us-east",
+				USWest:      "http://foobar.com?region=us-west",
+				Fallback:    "http://foobar.com?region=fallback",
 			}
 
 			l := NewLatencyCheckerModifier(&endpoints,
@@ -216,12 +208,12 @@ func TestResourcesAreReleased(t *testing.T) {
 	defer teardown()
 
 	endpoints := EndPoints{
-		AsiaPacific: "https://foobar.com?region=apac",
-		Europe:      "https://foobar.com?region=eu",
-		Universal:   "https://foobar.com?region=universal",
-		USEast:      "https://foobar.com?region=us-east",
-		USWest:      "https://foobar.com?region=us-west",
-		Fallback:    "https://foobar.com?region=fallback",
+		AsiaPacific: "http://foobar.com?region=apac",
+		Europe:      "http://foobar.com?region=eu",
+		Universal:   "http://foobar.com?region=universal",
+		USEast:      "http://foobar.com?region=us-east",
+		USWest:      "http://foobar.com?region=us-west",
+		Fallback:    "http://foobar.com?region=fallback",
 	}
 
 	for i := 0; i < 10; i++ {
@@ -234,19 +226,4 @@ func TestResourcesAreReleased(t *testing.T) {
 	}
 	time.Sleep(1000 * time.Millisecond)
 	httpClient.CloseIdleConnections()
-}
-
-func testingHTTPClient(handler http.Handler) (*http.Client, func()) {
-	s := httptest.NewServer(handler)
-	cli := &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, network, _ string) (net.Conn, error) {
-				return net.Dial(network, s.Listener.Addr().String())
-			},
-			TLSClientConfig:   &tls.Config{InsecureSkipVerify: true},
-			DisableKeepAlives: true,
-		},
-		Timeout: 2 * time.Second,
-	}
-	return cli, s.Close
 }
