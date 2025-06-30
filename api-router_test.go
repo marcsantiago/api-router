@@ -15,7 +15,7 @@ import (
 )
 
 func TestEndPoints_validate(t *testing.T) {
-	os.Setenv("AWS_REGION", "")
+	_ = os.Setenv("AWS_REGION", "")
 	type fields struct {
 		AsiaPacific string
 		Europe      string
@@ -113,7 +113,7 @@ func TestEndPoints_validate(t *testing.T) {
 }
 
 func TestLatency_findLowLatencyEndpoint(t *testing.T) {
-	os.Setenv("AWS_REGION", "")
+	_ = os.Setenv("AWS_REGION", "")
 	type args struct {
 		currentLocal string
 		useFallback  bool
@@ -210,7 +210,7 @@ func TestLatency_findLowLatencyEndpoint(t *testing.T) {
 }
 
 func TestLatency_findLowLatencyEndpointWithRegion(t *testing.T) {
-	os.Setenv("AWS_REGION", "ap-south-1")
+	_ = os.Setenv("AWS_REGION", "ap-south-1")
 	type args struct {
 		currentLocal string
 	}
@@ -293,7 +293,7 @@ func TestLatency_periodicallyPingEndpoints(t *testing.T) {
 		t.Skip("skipping")
 	}
 
-	os.Setenv("AWS_REGION", "")
+	_ = os.Setenv("AWS_REGION", "")
 	type args struct {
 		currentLocal string
 		useFallback  bool
