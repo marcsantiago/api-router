@@ -2,9 +2,9 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -15,12 +15,10 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 var (
-	// defaultClient provides a network client with a the timeout set to 2seconds and 0 keep-alives
+	// defaultClient provides a network client with the timeout set to 2 seconds and 0 keep-alive
 	defaultClient = &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -35,7 +33,7 @@ var (
 )
 
 var (
-	// ErrAtLeastOne at least one field of EndPoints needs to initialized
+	// ErrAtLeastOne at least one field of EndPoints needs to initialize
 	ErrAtLeastOne = errors.New("at least one endpoint has to be passed in")
 	// ErrBadStatus notifies the user that the status code is not a 200
 	ErrBadStatus = errors.New("received a non 200 status code")
@@ -51,18 +49,18 @@ var (
 	ErrNoSuchHost = errors.New("the endpoint's host could not be found")
 )
 
-// EndPoints belonging the the API service that is being used
+// EndPoints belonging the API service that is being used
 type EndPoints struct {
 	AsiaPacific string `json:"asia_pacific,omitempty"` // APAC
 	Europe      string `json:"europe,omitempty"`       // EU
-	Universal   string `json:"universal,omitempty"`    // Some APIs contain a single endpoint, which is latency load balanced by the DNS and load balancer
+	Universal   string `json:"universal,omitempty"`    // Some APIs contain a single endpoint, which is a latency load balanced by the DNS and load balancer
 	USEast      string `json:"us_east,omitempty"`      // us-east-1
 	USWest      string `json:"us_west,omitempty"`      // us-west-1
-	Fallback    string `json:"fallback,omitempty"`     // provides an optional endpoint to fallback to in emergencies
+	Fallback    string `json:"fallback,omitempty"`     // provides an optional endpoint to fall back to in emergencies
 	FastestURL  string `json:"fastest_url,omitempty"`  // is the fastest endpoint based on a head request
 }
 
-// normally reflection should be avoided because it's very slow
+// normally, reflection should be avoided because it's very slow,
 // however, because this method is called once at initialization, this should be okay
 func (e EndPoints) validate() error {
 	var atLeastOne int
@@ -71,11 +69,11 @@ func (e EndPoints) validate() error {
 		if endpoint := v.Field(i).Interface(); len(endpoint.(string)) > 1 {
 			u, err := url.Parse(endpoint.(string))
 			if err != nil {
-				return errors.Wrap(err, fmt.Sprintf("url parsing error on %v: %v", v.Field(i), endpoint))
+				return fmt.Errorf("url parsing error %w on %v: %v", err, v.Field(i), endpoint)
 			}
 
 			if len(u.Scheme) == 0 {
-				return errors.Wrap(ErrMissingProtocol, fmt.Sprintf("missing protocol, on %v: %v", v.Field(i), endpoint))
+				return fmt.Errorf("missing protocol %w, on %v: %v", ErrMissingProtocol, v.Field(i), endpoint)
 			}
 			atLeastOne++
 		}
@@ -100,17 +98,17 @@ func (e EndPoints) validate() error {
 	return nil
 }
 
-// Latency creates a router based on API latency, in order for endpoints to be checked
-// PingInterval must be set, otherwise it will fallback to relying on AWS regional information if set
+// Latency creates a router based on API latency, in order for endpoints to be checked.
+// PingInterval must be set, otherwise it will fall back to relying on AWS regional information if set
 // and lastly to the fallback URL if none of the above is set
 type Latency struct {
-	// incase AWS_REGION is present we will default to that region
+	// in case AWS_REGION is present, we will default to that region
 	AWSRegion string
-	// if a client is not passed in as an optional the default network client will be used
+	// if a client is not passed in as an optional, the default network client will be used
 	Client *http.Client
-	// if DebugMode is set logs from the standard log package will be displayed
+	// if DebugMode is set, logs from the standard log package will be displayed
 	DebugMode bool
-	// if PingInterval is not set as an optional endpoints will not be checked for latency periodically
+	// if PingInterval is not set as optional, endpoints will not be checked for latency periodically
 	PingInterval time.Duration
 	preset       bool
 	shouldGuard  bool
@@ -121,7 +119,7 @@ type Latency struct {
 }
 
 // NewLatencyRouter returns a fully initialized network based API router
-// if the inputted client is nil, the default client will be used underneath, which has a 500ms timeout
+// if the inputted client is nil, the default client will be used underneath, which has a 500 ms timeout
 func NewLatencyRouter(endpoints EndPoints, options ...func(*Latency)) (*Latency, error) {
 	if err := endpoints.validate(); err != nil {
 		return nil, err
@@ -199,7 +197,7 @@ func (l *Latency) StopPingingEndpoints() {
 
 func (l *Latency) findLowLatencyEndpoint() {
 	// the container is equal to the number of endpoints to hit
-	// we only care about the first one, this is to help with dead locking
+	// we only care about the first one, this is to help with deadlocking
 	quickestEndpointCh := make(chan string, 1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), l.Client.Timeout)
@@ -228,7 +226,7 @@ func (l *Latency) findLowLatencyEndpoint() {
 		}
 	}
 
-	// if new endpoints are added the below needs to be updated as well
+	// if new endpoints are added, the below needs to be updated as well
 	// we could use reflection here to iterate over the items in the struct, but it isn't worth the performance cost
 	if len(quickestEndpointCh) == 0 {
 		// the first one to return is the quickest endpoint
@@ -272,10 +270,12 @@ func (l *Latency) headRequest(ctx context.Context, endpoint string, quickestEndp
 	if err != nil {
 		return
 	}
-	defer res.Body.Close()
 
 	// trust no one
-	go io.Copy(ioutil.Discard, res.Body)
+	defer func() {
+		_, _ = io.Copy(io.Discard, res.Body)
+		_ = res.Body.Close()
+	}()
 
 	if !(res.StatusCode >= http.StatusOK && res.StatusCode < http.StatusMultipleChoices) {
 		return
@@ -299,10 +299,11 @@ func (l *Latency) headRequestPresetEndpoint(endpoint string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer res.Body.Close()
-
 	// trust no one
-	go io.Copy(ioutil.Discard, res.Body)
+	defer func() {
+		_, _ = io.Copy(io.Discard, res.Body)
+		_ = res.Body.Close()
+	}()
 
 	if res.StatusCode != http.StatusOK {
 		return res.StatusCode, ErrBadStatus
