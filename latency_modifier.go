@@ -145,7 +145,6 @@ func (l *LatencyCheckModifier) findLowLatencyEndpoint() {
 		return
 	}
 	l.fastestURL = fastest.URL
-	return
 }
 
 func (l *LatencyCheckModifier) headRequest(ctx context.Context, wg *sync.WaitGroup, endpoint string, results chan latencyResult) {
@@ -179,16 +178,17 @@ func (l *LatencyCheckModifier) headRequest(ctx context.Context, wg *sync.WaitGro
 
 	duration := time.Since(start)
 	results <- latencyResult{endpoint, duration}
-	return
 }
 
-func (l *LatencyCheckModifier) log(v ...interface{}) {
+//nolint:unused
+func (l *LatencyCheckModifier) log(v ...any) {
 	if l.DebugMode {
 		log.Println(v...)
 	}
 }
 
-func (l *LatencyCheckModifier) logf(format string, v ...interface{}) {
+//nolint:unused
+func (l *LatencyCheckModifier) logf(format string, v ...any) {
 	if l.DebugMode {
 		log.Printf(format, v...)
 	}
