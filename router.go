@@ -79,7 +79,7 @@ func NewEnvironmentRouter(endpoints EndPoints) (*Router, error) {
 			endpoints.ClosestURL = endpoints.USEast
 		case "us-west-1", "us-west-2":
 			endpoints.ClosestURL = endpoints.USWest
-		case "ap-south-1", "  ap-southeast-1", "ap-southeast-2":
+		case "ap-south-1", "ap-southeast-1", "ap-southeast-2", "ap-southeast-5":
 			endpoints.ClosestURL = endpoints.AsiaPacific
 		case "eu-central-1":
 			endpoints.ClosestURL = endpoints.Europe
